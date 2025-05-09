@@ -1,0 +1,1208 @@
+---
+title: "Why Most of Psychology is Unfalsifiable - A Simulation"
+author: "Gian Wegmueller"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    number_sections: true
+    code_folding: hide
+    highlight: haddock
+    theme: flatly
+    toc: yes
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(message = FALSE, 
+                      warning = FALSE)
+
+
+options(scipen=999) # turn off scientific notation
+
+```
+
+``` {r, install dependencies}
+
+# Function to check for and install necessary packages
+# this function checks if each package in the list 'required_packages' is installed. If not, it attempts to install the missing packages. 
+
+check_and_install_packages <- function(packages) {
+  missing_packages <- packages[!sapply(packages, requireNamespace, quietly = TRUE)]
+  
+  if (length(missing_packages) > 0) {
+    install.packages(missing_packages)
+    missing_packages <- packages[!sapply(packages, requireNamespace, quietly = TRUE)]
+    
+    if (length(missing_packages) > 0) {
+      warning("The following packages could not be installed: ", paste(missing_packages, collapse = ", "))
+    }
+  }
+}
+
+# List of required packages
+required_packages <- c("tidyverse", "devtools", "faux", "pwr", "kableExtra", "janitor","ggplot2", "ggtext", "diffcor")
+
+# Check and install packages
+check_and_install_packages(required_packages)
+
+
+# install package "simulateR"
+devtools::install_github("ianhussey/simulateR") 
+
+```
+
+
+# Introduction
+
+Back in 2015, the Open Science Collaboration (OSC) published an article in *Science*, reporting the results of the "Reproducibility Project: Psychology (RP:P)" [OSC, 2015](https://www.science.org/doi/10.1126/science.aac4716). The goal of the RP:P was to estimate the reproducibility of psychological science in a collaborative effort, conducting replications of 100 experimental and correlational studies published in three psychological journals: *Psychological Science (PSCI), Journal of Personality and Social Psychology (JPSP),* and *Journal of Experimental Psychology: Learning, Memory, and Cognition (JEP:LMC)*. Despite using high-powered designs for the replication studies, the results were sobering. Taking the agreement in statistical significance across the original and the replication as a criterion for success, only thirty-six percent of replications had significant results (*p \< .05*), compared to ninety-seven percent of original studies. The OSC mentions publication bias favoring positive results and low-power research designs as factors influencing these findings.
+
+In their unpublished manuscript, [Morey and Lakens (2016)](https://github.com/richarddmorey/psychology_resolution/blob/master/paper/response.pdf) shed light on another implication of low-power research designs in the context of the RP:P. Despite an established knowledge that using effect size estimates from small samples in power analyses will yield under-powered tests, sample sizes in the RP:P replications were only powered to detect effects as large as the ones observed in the original studies. The consequence is that although the replications had a high probability to reject the hypothesis that there is no effect *if* the effect size in the original study were the true population effect - a highly questionable assumption - the studies had poor power to detect even large differences in results from the original study. Only eleven percent of the 73 RP:P studies Morey and Lakens included in their analyses had a power of above 0.80 to detect a difference of a "medium" effect size between studies.
+
+This inability to a) successfully replicate and confirm effects found in original studies, and b) provide statistical evidence for the presence of a difference between an original and a replication study leads Morey and Lakens to the following conclusion:
+
+> "We argue that as a consequence many of the findings in the psychological literature are in practice unfalsifiable". - Morey and Lakens (2016), p. 2
+
+It follows from this, that improving the falsifiability of psychological findings is a necessity for true scientific progress in our field. Morey and Lakens then go on to give the reader a few practical recommendations to power future original studies. According to the authors, researchers should power their studies so that a similarly-sized replication has a high probability of detecting a *specified difference* from the original study, if that difference exists. Since a statistical test has power to all hypothetical values of a difference, clearly stating a maximal difference in effect sizes which is still consistent with one's theoretical position or hypothesis could be one way to make more specific and falsifiable predictions. Further, choosing a large enough sample in the original study not only improves power to detect a true effect, it also improves power to detect differences in the results of replication studies. When comparing two independent studies, the inherent variance in their results is twice as high as in just one study. To then detect a specified difference of $\delta$ units between the two studies, the sample needs to be twice as large compared to a scenario where one is only interested in detecting a difference from 0 in a single study. Morey and Lakens argue that taking into consideration these aspects - specification of a difference in effect sizes and a large enough number of participants - while planning a study can help create a higher-resolution literature in psychology focused more on cumulative scientific progress rather than individual results.
+
+In this paper, I will run three simulations with the aim of demonstrating 1) the current power problem with replication studies as described above, 2) why most of psychology is statistically unfalsifiable, and 3) how Morey and Lakens' recommendations for powering future studies could help to move towards a truly cumulative psychological science.
+
+# Simulation 1 - Power Problems in Replication Studies
+
+Despite the word of caution by statisticians advising against the use of effect size estimates from small samples in power analyses (e.g. [Leon et al, 2011](https://doi.org/10.1016/j.jpsychires.2010.10.008)) the RP:P based all power calculations for the replications on the effects found in the original study. With a median sample size of 54 in the original studies of the RP:P, one can assume that relying on these effect sizes in power analyses will yield under-powered tests. To understand the impacts of low-powered research designs the following simulation aims to demonstrate how small sample sizes not only impair the power to detect the true effect in the original study but also influence replication sample size and results when original effect sizes are used as a foundation for planning. An important thing to note here is that this simulation does not account for any publication biases or *p*-hacking, which are present in the real world scientific literature. Rather we act as if every article, no matter the significance of the result, gets published and then replicated.
+
+## Data Generating Mechanisms
+
+The data generated are normal bivariate correlational data (X and Y) for both original study samples and replication study samples using the R package `faux` by [Lisa DeBruine](https://debruine.github.io/faux/). I use a fully factorial design, including all possible combinations of the original sample size factor and the true population correlation. For the original sample size I choose the values 30, 54, 80, and 150. The smallest sample n = 30 is based on recommendations often given in statistic courses at universities, n = 54 represents the median sample size of the RP:P, n = 80 and n = 150 were chosen arbitrarily to represent plausible medium to large original studies in experimental/clinical psychological literature. For the true population correlation $\rho$ I follow Cohen's guidelines of Pearson's r = .10, .30, and .50 to represent small, medium, and large effect sizes respectively ([Cohen, 1988](https://doi.org/10.4324/9780203771587)). In addition to that, I also include a true null-effect to assess the rate of false positives in the original and replication studies. The sample size for the replication studies will be based off of power analyses conducted with the estimated effect sizes from the original studies and a desired power of at least .80. Note that this method of determining sample size can lead to smaller samples in replication studies compared to original studies due to the desired power being reached with a smaller number of participants, depending on the effect size. 
+
+**Disclaimer** 
+I tried to run the simulation with at least a thousand iterations, but this led to errors due to limited processing power. I repeatedly got the following error message and the simulation was halted: 
+
+```
+Error in `mutate()`:
+ℹ In argument: `generated_data_rep = pmap(list(n_rep, rho), generate_data)`.
+Caused by error in `pmap()`:
+ℹ In index: 9000.
+Caused by error:
+! cannot allocate vector of size 26.0 Gb
+Backtrace:
+1. dplyr::mutate(...)
+9. purrr::pmap(list(n_rep, rho), generate_data)
+10. purrr:::pmap_("list", .l, .f, ..., .progress = .progress)
+14. global .f(.l[[1L]][[i]], .l[[2L]][[i]], ...)
+15. faux::rnorm_multi(...)
+16. base::matrix(stats::rnorm(p * n), n)
+
+```
+
+I found different solutions to this problem, for example parallel processing or cluster computing. However, with the time at hand and my limited knowledge of these methods I then decided to focus more on the implementation of simulation 2 and simulation 3. As a consequence, only 150 iterations are run in simulation 1. This number can be increased if bigger processing power is available. 
+
+## Estimand
+
+The estimand of interest is the true hypothesis with regard to the association between two variables X and Y in a study sample, i.e. Pearson's r. The null hypothesis denotes a null effect (i.e. Pearson's r = 0) and the alternative hypothesis denotes a non-zero correlation (i.e. Pearson's r $\neq$ 0). Since Pearson's r is a parameter of the underlying data-generating model, its true value and therefore the true hypothesis (null vs. alternative) is known.
+
+## Methods
+
+A commonly used sample size planning practice in experimental/clinical psychological research is evaluated: choosing the number of participants for a replication study based on the criterion of 80% power to detect a previous result.
+
+## Performance measures
+
+In order to assess the performance of the 80%-power-method for sample size planning, true positive and false positive rates of detecting the true correlation/hypothesis are calculated for each original and each replication study. Moreover, the agreement in statistical significance between the original and the replication is analysed as well, following the approach of the RP:P.
+
+## Simulation 1 - Code
+
+```{r Simulation 1, results = 'hide', echo = TRUE}
+
+rm(list = ls()) #clear global environment
+
+# dependencies ----
+
+# load all the necessary dependencies!
+
+library(tidyverse)
+library(faux)
+library(pwr)
+library(kableExtra)
+library(janitor)
+library(ggplot2)
+library(ggtext)
+library(simulateR)
+
+# set the seed ----
+# for making the results of the (pseudo) random number generator reproducible
+set.seed(73)
+
+# define data generation function ----
+generate_data <- function (n,
+                           rho) {
+  
+  # loading necessary package (safety measure if package has not been loaded correctly before)
+  require(faux)
+  
+  # generate data with rnorm_multi()
+  data <- rnorm_multi(n = n, # n gets passed on by argument
+                      mu = c(0, 0), # numbers are arbitrary, means of variables should be equal to get normal data 
+                      sd = c(1, 1), # numbers are also arbitrary: values of mu and sd represent standard normal distribution
+                      r = matrix(c(1, rho, 
+                                   rho, 1), 
+                                 ncol = 2), # creates a correlation matrix with 'rho' as the true corr. passed on by argument 
+                      varnames = c("x", "y")) # names of variables to "x" and "y"
+  
+  return(data) # returns generated data
+  
+}
+
+
+# define data analysis function ----
+analyse_data <- function(data) {
+  
+  fit_cor <- cor.test(data$x, # fit correlation between variable x (requires data to contain column x)
+                      data$y, # ...and variable y (requires data to contain column y)
+                      alternative = "two.sided", # specify alternative hypothesis to two sided, for r != 0
+                      method = "pearson") # use Pearson's r as estimated coefficient
+  
+  results <- tibble(r_estimate = fit_cor$estimate, # create a results tibble with the estimated correlation
+                    p_value = fit_cor$p.value) # ...and the p-value
+  
+  return(results)
+}
+
+
+# cstm.pwr.r.test() function (source code from pwr-package) to deal with errors that occurred when running more iterations. This error is apparently caused by uniroot() where the endpoints of an interval were not of opposite signs. I changed the uniroot()-function by adding the argument extendInt = "yes". This extends the interval until it has differing signs at the endpoints. Other than that, I did not alter the pwr.r.test()-function. 
+
+"cstm.pwr.r.test" <- function (n = NULL, r = NULL, sig.level = 0.05, power = NULL,
+                               alternative = c("two.sided", "less","greater")){
+  
+  if (sum(sapply(list(n, r, power, sig.level), is.null)) !=
+      1)
+    stop("exactly one of n, r, power, and sig.level must be NULL")
+  if (!is.null(r) && is.character(r))
+    r <- cohen.ES(test="r",size=r)$effect.size
+  if (!is.null(sig.level) && !is.numeric(sig.level) || any(0 >
+                                                           sig.level | sig.level > 1))
+    stop(sQuote("sig.level"), " must be numeric in [0, 1]")
+  if (!is.null(power) && !is.numeric(power) || any(0 > power |
+                                                   power > 1))
+    stop(sQuote("power"), " must be numeric in [0, 1]")
+  if (!is.null(n) && any(n < 4))
+    stop("number of observations must be at least 4")
+  alternative <- match.arg(alternative)
+  tside <- switch(alternative, less = 1, two.sided = 2,greater=3)
+  if (tside == 2 && !is.null(r))
+    r <- abs(r)
+  if (tside == 3) {
+    p.body <- quote({
+      ttt <- qt(sig.level, df = n - 2, lower.tail = FALSE)
+      rc <- sqrt(ttt^2/(ttt^2 + n - 2))
+      zr <- atanh(r) + r/(2 * (n - 1))
+      zrc <- atanh(rc) # + rc/(2 * (n - 1))
+      pnorm((zr - zrc) * sqrt(n - 3))
+    })
+  }
+  if (tside == 1) {
+    p.body <- quote({
+      r<--r
+      ttt <- qt(sig.level, df = n - 2, lower.tail = FALSE)
+      rc <- sqrt(ttt^2/(ttt^2 + n - 2))
+      zr <- atanh(r) + r/(2 * (n - 1))
+      zrc <- atanh(rc) # + rc/(2 * (n - 1))
+      pnorm((zr - zrc) * sqrt(n - 3))
+    })
+  }
+  
+  if (tside == 2) {
+    p.body <- quote({
+      ttt <- qt(sig.level/2, df = n - 2, lower.tail = FALSE)
+      rc <- sqrt(ttt^2/(ttt^2 + n - 2))
+      zr <- atanh(r) + r/(2 * (n - 1))
+      zrc <- atanh(rc) # + rc/(2 * (n - 1))
+      pnorm((zr - zrc) * sqrt(n - 3)) + pnorm((-zr - zrc) *
+                                                sqrt(n - 3))
+    })
+  }
+  if (is.null(power))
+    power <- eval(p.body)
+  else if (is.null(n))
+    n <- uniroot(function(n) eval(p.body) - power, c(4 +
+                                                       1e-10, 1e+09), extendInt = "yes")$root # here I added extendInt = "yes"
+  else if (is.null(r)){
+    if(tside==2)
+      r <- uniroot(function(r) eval(p.body) - power,
+                   c(1e-10,1 - 1e-10))$root
+    else
+      r <- uniroot(function(r) eval(p.body) - power,
+                   c(-1+1e-10, 1 - 1e-10))$root
+  }
+  else if (is.null(sig.level))
+    sig.level <- uniroot(function(sig.level) eval(p.body) - power,
+                         c(1e-10, 1 - 1e-10))$root
+  else stop("internal error")
+  METHOD <- "approximate correlation power calculation (arctangh transformation)"
+  structure(list(n = n, r = r, sig.level = sig.level, power = power,
+                 alternative = alternative, method = METHOD), class = "power.htest")
+}
+
+
+
+# define sample size planning function ----
+sample_size_planning <- function(results){
+  
+  # calculating sample size for replication study
+  fit_power <- 
+    cstm.pwr.r.test(r = results$r_estimate, # take correlation estimate from original study as the basis
+                    power = .80, # at least .80 power for detecting the specified r is desired
+                    sig.level = .05, # usual significance level of alpha = .05
+                    alternative = "two.sided") # hypothesis test is two sided
+  
+  res <- tibble(n_rep = ceiling(fit_power$n)) # create a tibble with the number of participants needed rounded up to the next integer according to the power analysis conducted with cstm.pwr.r.test()
+  
+  return(res)
+}
+
+
+# setting up experiment parameters grid ----
+experiment_parameters_grid <- expand_grid(
+  n_orig = c(30, 54, 80, 150), # different original sample sizes
+  rho = c(0.0, .10, .30, .50), # different true population correlations
+  iteration = 1:150# number of iterations 
+)
+
+# run simulation ---- 
+simulation <- 
+  # using the experiment parameters
+  experiment_parameters_grid |> 
+  
+  # generate original data using the data generating function and the parameters relevant to data generation
+  mutate(generated_data_orig = pmap(list(n_orig, # original study sample size
+                                         rho), # true population correlation
+                                    generate_data)) |>
+  
+  # apply the analysis function to the generated original data
+  mutate(analysis_results_orig = pmap(list(generated_data_orig),
+                                      analyse_data)) |>
+  
+  # calculating sample size for replication study using the sample size planning function
+  mutate(parameters_rep = pmap(list(analysis_results_orig), 
+                               sample_size_planning)) |> 
+  unnest(parameters_rep) |>  # unnest the results from the tibble to get a single column n_rep
+  
+  # generate replication data using the data generating function and the parameters relevant to data generation
+  mutate(generated_data_rep = pmap(list(n_rep, # now use the calculated sample size for the replication study as n
+                                        rho), # ...and the true population correlation 
+                                   generate_data)) |> 
+  
+  # apply the analysis function to the generated replication data
+  mutate(analysis_results_rep = pmap(list(generated_data_rep),
+                                     analyse_data))
+
+
+# summarize simulation results ---- 
+
+simulation_summary <- simulation |>
+  unnest(analysis_results_orig) |> # unnest the analysis results tibble to get r_estimate and p_value as single columns
+  rename(p_orig = p_value, # rename p_value to p_orig
+         r_estimate_orig = r_estimate) |> # rename r_estimate to r_estimate_orig
+  
+  # do the same as above for the replication results
+  unnest(analysis_results_rep) |>
+  rename(p_rep = p_value,
+         r_estimate_rep = r_estimate) |> 
+  
+  # create variable for agreement in statistical significance between orig and rep (RP:P approach)
+  mutate(p_agree = case_when(p_orig < .05 & p_rep < .05 ~ TRUE, # if both are significant, assign TRUE
+                             p_orig >= .05 & p_rep >= .05 ~ TRUE, # if both are non significant, assign TRUE
+                             p_orig < .05 & p_rep >= .05 ~ FALSE, # if only original is significant, assign FALSE
+                             p_orig >= .05 & p_rep < .05 ~ FALSE)) |> # if only replication is significant, assign FALSE
+  
+  # summarize variables to get true positive/false positive rates, median number of participants in replications and proportion of agreement in statistical significance between original and replication studies
+  group_by(n_orig, 
+           rho) |> # grouped by simulation factors
+  
+  summarize(sig_rate_orig = round_half_up(mean(p_orig < .05), digits = 3), # create new column with proportion of sig. results in original studies, rounded to three decimal digits
+            sig_rate_rep = round_half_up(mean(p_rep < .05), digits = 3), # create new column with proportion of sig. results in replication studies, rounded to three decimal digits
+            proportion_agree = round_half_up(mean(p_agree), digits = 3), # proportion of agreement between original and replication studies, rounded to three decimal digits
+            mean_estimate_orig = round_half_up(mean(r_estimate_orig), digits = 3), # mean correlation estimate of original studies, rounded to three decimal digits
+            mean_estimate_rep = round_half_up(mean(r_estimate_rep), digits= 3), # mean correlation estimate of replication studies, rounded to three decimal digits
+            median_n_rep = ceiling(median(n_rep))) |> # summarize n_rep to median number of participants in replication studies, rounded up to next integer
+  
+  ungroup() |> 
+  
+  dplyr::select(rho,
+                n_orig, 
+                median_n_rep,
+                mean_estimate_orig,
+                mean_estimate_rep,
+                sig_rate_orig,
+                sig_rate_rep,
+                proportion_agree) # select only relevant columns for simulation summary
+
+
+```
+
+
+## Results Simulation 1 - Tables and Plots
+```{r results tables}
+
+# create a table of results ----
+
+# results for a true rho = 0.0 - false positive rates (FPR)
+simulation_summary |> 
+  
+  filter(rho == 0.0) |> # filter the null effects
+  
+  dplyr::select(-rho) |> #drop the rho variable, since it is no longer needed after filtering for just one level
+  
+  # Properly naming variables to create a nice table 
+  rename(`FPR Orig.` = sig_rate_orig, # significance rate to false positive rate
+         `FPR Rep.` = sig_rate_rep, 
+         `N Orig.` = n_orig,
+         `Md. N Rep.`= median_n_rep, 
+         `M cor Orig.` = mean_estimate_orig,
+         `M cor Rep.` = mean_estimate_rep,
+         `Prop. agree` = proportion_agree) |> 
+  
+  kable(caption = "Results for \u03C1\ = 0.0 - False Positive Rates (FPR)") |> # create table and add a title
+  kable_classic(full_width = FALSE) # set theme for table and format it
+
+
+
+# results for a true effect (rho = 0.1; 0.3; 0.5) - true positive rates (TPR)
+simulation_summary |> 
+  
+  filter(rho != 0.0) |> # exclude the true null effects
+  
+  arrange(rho, n_orig) |> # order the rows from smallest to largest rho and then from smallest to largest n_orig
+  
+  # Properly naming variables to create a nice table 
+  rename(`TPR Orig.` = sig_rate_orig, # significance rate to true positive rate
+         `TPR Rep.` = sig_rate_rep,
+         `N Orig.` = n_orig,
+         `Md. N Rep.`= median_n_rep, 
+         `M cor Orig.` = mean_estimate_orig,
+         `M cor Rep.` = mean_estimate_rep,
+         `Prop. agree` = proportion_agree) |> 
+  
+  kable(caption = "Results for a true effect \u03C1\ = .10, .30, or .50 - True Positive Rate (TPR)") |> # create table and add a title
+  kable_classic(full_width = FALSE) # set theme for table
+
+```
+
+
+### True/False Positive Rates in Original Studies
+```{r multiverse plot original studies}
+
+# plot results for true effects with multiverse plot ----
+
+# The multiverse_plot function from the simulateR package is needed for this step (thanks Ian!)
+
+
+# Multiverse plot for false/true positive rate in original studies
+
+summary_ordered_orig <- simulation_summary |> 
+  # the outcome variable must be called 'outcome' for the multiverse plot function
+  mutate(outcome = sig_rate_orig) |> 
+  
+  # order the rows from smallest to largest rho and then from smallest to largest n_orig
+  arrange(rho, n_orig) |> 
+  mutate(rank = row_number()) |> # create a rank variable with the row number as rank to order the different conditions in the plot from left to right
+  
+  # select only the columns which contain simulation factors (i.e., n_orig and rho) as well as 'outcome' and 'rank'
+  # rename variables to plot nicely
+  dplyr::select(`True correlation`= rho,
+                `Original sample size`= n_orig,
+                outcome,
+                rank)
+
+
+# create multiverse plot
+sim1_multiverse_orig <- multiverse_plot(summary_ordered_orig,
+                                        outcome_name = "False/true positive rate",
+                                        relative_height_of_upper_plot = 0.9,
+                                        limits = c(0, 1))
+
+sim1_multiverse_orig
+
+```
+
+
+### True/False Positive Rates in Replication Studies
+```{r multiverse plot replication studies}
+
+# Multiverse plot for false/true positive rate in replication studies
+
+summary_ordered_rep <- simulation_summary |> 
+  # the outcome variable must be called 'outcome' for the multiverse plot function
+  mutate(outcome = sig_rate_rep) |> 
+  
+  # order the rows in the columns, from smallest to largest rho and then from smallest to largest n_orig
+  arrange(rho, n_orig) |> 
+  mutate(rank = row_number()) |> # create a rank variable with the row number as rank to order the different conditions in the plot from left to right
+  
+  # select only the columns which contain simulation factors (i.e., n_orig and rho) as well as 'outcome' and 'rank'
+  # rename variables to plot nicely
+  dplyr::select(`True correlation`= rho,
+                `Original sample size`= n_orig,
+                outcome,
+                rank)
+
+
+# create multiverse plot
+sim1_multiverse_rep <- multiverse_plot(summary_ordered_rep,
+                                       outcome_name = "False/true positive rate",
+                                       relative_height_of_upper_plot = 0.9,
+                                       limits = c(0, 1))
+
+sim1_multiverse_rep
+
+```
+
+### Proportion of Agreement in Statistical Significance
+```{r multiverse plot agreement}
+
+# Multiverse plot for proportion of agreement in significance between original and replication studies
+
+summary_ordered_agree <- simulation_summary |> 
+  # the outcome variable must be called 'outcome' for the multiverse plot function
+  mutate(outcome = proportion_agree) |> 
+  
+  # order the rows in the columns, from smallest to largest rho and then from smallest to largest n_orig
+  arrange(rho, n_orig) |>
+  mutate(rank = row_number()) |> # create a rank variable with the row number as rank to order the different conditions in the plot from left to right
+  
+  # select only the columns which contain simulation factors (i.e., n_orig and rho) as well as 'outcome' and 'rank'
+  # rename variables to plot nicely
+  dplyr::select(`True correlation`= rho,
+                `Original sample size`= n_orig,
+                outcome,
+                rank)
+
+
+# create multiverse plot
+sim1_multiverse_agree <- multiverse_plot(summary_ordered_agree,
+                                         outcome_name = "Proportion of Agreement in Significance",
+                                         relative_height_of_upper_plot = 0.9,
+                                         limits = c(0, 1))
+
+sim1_multiverse_agree
+
+```
+
+### Median Sample Size in Replication Studies
+```{r multiverse plot sample size}
+
+# Multiverse plot for median sample size in replication studies
+
+summary_ordered_ssize <- simulation_summary |> 
+  # the outcome variable must be called 'outcome' for the multiverse plot function
+  mutate(outcome = median_n_rep) |> 
+  
+  # order the rows in the columns, from smallest to largest rho and then from smallest to largest n_orig
+  arrange(rho, n_orig) |> 
+  mutate(rank = row_number()) |> # create a rank variable with the row number as rank to order the different conditions in the plot from left to right
+  
+  # select only the columns which contain simulation factors (i.e., n_orig and rho) as well as 'outcome' and 'rank'
+  # rename variables to plot nicely
+  dplyr::select(`True correlation`= rho,
+                `Original sample size`= n_orig,
+                outcome,
+                rank)
+
+
+# create multiverse plot
+sim1_multiverse_ssize <- multiverse_plot(summary_ordered_ssize,
+                                         outcome_name = "Median Replication Sample Size",
+                                         relative_height_of_upper_plot = 0.9)
+
+sim1_multiverse_ssize
+
+```
+
+
+## Summary of Results
+
+The results for a true population correlation of $\rho$ = 0 approximately yield the expected false positive rate (FPR) of 0.05, with n = 80 having a slightly higher FPR than the other conditions. This result is expected to be more stable if more iterations can be run. The FPR in the replication studies varies from 0.013 to 0.067, which on the one hand is attributable also to the small number of iterations, on the other hand to the much larger median number of participants, which ranges from 431 to 2251. Looking at the proportion of agreement in statistical significance between the original and the replication studies, this value ranges from 0.88 to 0.94. Again, one can expect these numbers to stabilize with more iterations. In summary, a true null effect is detected as such by both original and replication studies with a FPR approximately matching the expected type 1 error of $\alpha$ = 0.05. It is noteworthy though, that the large sample sizes in the replication studies are rarely possible in real life clinical/experimental research, which could potentially lead to a smaller proportion of agreement.
+
+The true population correlations of $\rho$ = .10, .30, or .50 yield different results. Only 8%-27.3% of original studies detect a $\rho$ = .10, compared to 57.3%-74% of replication studies (proportion increases with sample size). Importantly, this is due to the much larger samples in the replications, with a median n ranging from 397 to 662. In terms of agreement in significance, only 18.7%-36% of the study pairs come to the same conclusion (proportion decreases with sample size). 
+
+Looking at a medium effect of $\rho$ = .30, 37.3%-96.7% of original studies detect this true correlation compared to 75.3%-80% of replication studies (proportion increases with sample size). The replication studies true positive rate (TPR) starts off twice as high as the original one, but only slightly improves when original sample size gets bigger. The median replication sample size revolves around 82-90, which could explain the smaller TPR of 80% in replications compared to 96.7% in original studies when sample size of the latter is n = 150. Regarding the agreement in statistical significance, this time the proportion increases with sample size in the original studies, ranging from 22% to 76.7%. 
+
+True positive rates in original studies for a large effect size of $\rho$ = .50 increase with sample size from 84% to 100%. The median sample size of the replication studies is now just N = 26-29, which leads to a decreased TPR of 75.3%-82% in replications. This discrepancy can also be seen in the proportion of agreement in statistical significance, which ranges from 59.3% to 80%. 
+
+In summary, low-powered original studies and the common sample size planning method have an impact on the power of studies conducted with the aim of replicating an effect and in consequence on the conclusions that can be drawn from these replications. The power to detect a true effect is especially low for small effect sizes. But even for a best case scenario where all original studies find a true large effect, still 24% of the study pairs 'fail to replicate', to use the terminology of the RP:P.
+
+
+# Simulation 2 - Why Most of Psychology is Statistically Unfalsifiable
+
+Simulation 1 showed that even in a fully transparent literature, where no publication bias and no *p*-hacking distort the picture of true population effects, original and replication studies can still differ in regard to agreement in statistical significance and true/false positive rates. However, relying on (dis)agreement in statistical significance alone to conclude that two effect sizes are in fact different is a statistical fallacy ([Gelman & Stern, 2006](https://www.tandfonline.com/doi/abs/10.1198/000313006X152649)). In order to assert a statistical difference in effect sizes between studies, one has to actually test for this difference. Low powered original studies pose a problem when it comes to detecting these differences: The standard error for small samples is larger and the confidence interval (CI) on the correlation estimate therefore wider, which in turn makes arguing for a true deviation in results much harder. In addition to that, publication bias favoring positive results adds another obstacle to the falsifiability of findings from original studies. Assuming most of the original studies engaged in *p*-hacking or tweaked their analyses in other ways to get a "publishable" effect, studies trying to replicate these results will fail to do so, since the true population effect is often not as big as the one reported in the biased studies. Although this difference between effect sizes exists, the low power of the original study makes it practically impossible to sensibly argue that the replication yielded different results. This circumstance also holds true for the RP:P. As mentioned above, only eleven percent of the RP:P studies [Morey and Lakens (2016)](https://github.com/richarddmorey/psychology_resolution/blob/master/paper/response.pdf) included in their analyses had a minimum power of .80 to detect a difference of .30 Fisher's $z$ units (i.e. Cohen's $q$ = .30).
+
+The aim of simulation 2 is to demonstrate this falsifiability problem on a larger scale. Again, data for multiple original-replication study pairs are generated. To represent the positive result distortion in the literature, the original effect sizes will be consistently biased upwards from the true population effect size.
+
+## Data Generating Mechanisms
+
+Using the package `faux` normal bivariate correlational data (X and Y) for both original and replication studies are generated. The parameters are the same as in the first simulation. Hence, for the original study sample size n = 30, 54, 80, and 150. The values for the true population correlation $\rho$ also stay the same with $\rho$ = 0.0, .10, .30, and .50 representing null, small, medium, and large effects respectively. I use a fully factorial design, including all possible combinations of these two parameters.
+
+Since in this simulation publication bias favoring positive results is also taken into account, the original studies' correlations $r_{orig}$ are biased upwards by +.20 from the true population correlation $\rho$. This upward bias is based on findings of the RP:P ([OSC, 2015](https://www.science.org/doi/10.1126/science.aac4716)) and a study by [Schäfer and Schwarz](https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2019.00813/full#h4) which found a similar effect size inflation. The true population correlation for the replication studies on the other hand will be unbiased. As in simulation 1, the sample size for the replication studies will be based off of power analyses conducted with the biased estimated effect sizes from the original studies and a desired power of .80 to find such an effect. 
+
+## Estimand
+
+The estimand of interest is the true hypothesis with regard to the difference between two effect sizes, i.e. the difference between two Fisher's $z$-transformed correlations. This difference is defined by [Cohen (1988)](https://doi.org/10.4324/9780203771587)) as $q = z(r_{orig}) - z(r_{rep})$ . The null hypothesis denotes no difference (i.e., $q$ = 0) and the alternative hypothesis denotes a difference of any size (i.e, $q \neq$ 0). Since the effect sizes in the original studies are consistently hacked and thus differ from the true population correlation $\rho$ underlying the generated data for the replication studies, the true hypothesis is the alternative hypothesis denoting a difference of $q \neq$ 0. 
+
+## Methods
+
+A commonly used sample size planning practice for replication studies - choosing the number of participants based on the effect size found in a previous study - is evaluated in the context of a biased literature in respect of its fitness for detecting existing differences between effect sizes.
+
+## Performance measure
+
+Fisher's $z$-tests for differences of correlations in two independent samples are applied, using the function `diffcor.two()` from the package `diffcor` by [Christian Blötner](https://cran.r-project.org/web/packages/diffcor/diffcor.pdf). The proportion of original and replication pairs that differ significantly is then assessed: If Fisher's $z$-test is significant with an *p* < .05, a difference of correlations exists. In addition to that, the mean of Cohen's $q$ over the iterations is calculated.
+
+## Simulation 2 - Code
+
+```{r Simulation 2, echo = TRUE}
+
+
+rm(list = ls()) #clear global environment
+
+# dependencies ----
+
+# load all the necessary dependencies!
+library(tidyverse)
+library(faux)
+library(pwr)
+library(diffcor)
+library(kableExtra)
+library(janitor)
+library(ggplot2)
+library(ggtext)
+library(simulateR)
+
+# set the seed ----
+# for making the results of the (pseudo) random number generator reproducible
+set.seed(73)
+
+# define data generation function ----
+generate_data <- function (n,
+                           rho) {
+  
+  # loading necessary package (safety measure if package has not been loaded correctly before)
+  require(faux)
+  
+  # generate data with rnorm_multi()
+  data <- rnorm_multi(n = n, # n gets passed on by argument
+                      mu = c(0, 0), # numbers are arbitrary, means of variables should be equal to get normal data 
+                      sd = c(1, 1), # numbers are also arbitrary: values of mu and sd represent standard normal distribution
+                      r = matrix(c(1, rho, 
+                                   rho, 1), 
+                                 ncol = 2),# creates a correlation matrix with 'rho' as the true corr. passed on by argument 
+                      varnames = c("x", "y")) # names of variables to "x" and "y"
+  
+  return(data) # returns generated data
+  
+}
+
+
+# define data analysis functions ----
+
+# function for fitting correlations
+fit_correlation <- function(data) {
+  
+  fit_cor <- cor.test(data$x, # fit correlation between variable x (requires data to contain column x)
+                      data$y, # ...and variable y (requires data to contain column y)
+                      alternative = "two.sided", # specify alternative hypothesis to two sided, for r != 0
+                      method = "pearson") # use Pearson's r as estimated coefficient
+  
+  
+  results_cor <- tibble(r_estimate = fit_cor$estimate) # create a results tibble with the estimated correlation
+  
+  return(results_cor)
+}
+
+
+# function for testing differences of correlations
+analyse_difference <- function(r_orig,
+                               r_rep,
+                               n_orig,
+                               n_rep) {
+  
+  # loading necessary package (safety measure if package has not been loaded correctly before)
+  require(diffcor)
+  
+  # calculate Fisher's z-test for differences of correlations 
+  diff_test <- diffcor.two(r1 = r_orig$r_estimate, # correlation estimate of the original study
+                           r2 = r_rep$r_estimate, # correlation estimate of the replication study
+                           n1 = n_orig, # sample size of the original study
+                           n2 = n_rep, # sample size of the replication study
+                           alternative = "two.sided") # tests two-sided differences
+  
+  # creating a tibble of results with the following columns
+  diff_results <- tibble(cohen_q = diff_test$Cohen_q, # effect size measure for differences of correlations
+                         p_value = diff_test$p) # p-value of the calculated Fisher's z-test
+  
+  return(diff_results)
+}
+
+
+
+# define sample size planning function ----
+sample_size_planning <- function(results){
+  
+  # loading necessary package (safety measure if package has not been loaded correctly before)
+  require(pwr)
+  
+  # calculating sample size for replication study
+  fit_power <- 
+    cstm.pwr.r.test(r = results$r_estimate, # take correlation estimate from original study as the basis
+                    power = .80, # at least .80 power for detecting the specified r is desired
+                    sig.level = .05, # usual significance level of alpha = .05
+                    alternative = "two.sided") # hypothesis test is two sided
+  
+  res <- tibble(n_rep = ceiling(fit_power$n)) # create a tibble with the round up number of participants needed according to the power analysis conducted with pwr.r.test()
+  
+  return(res)
+}
+
+
+# cstm.pwr.r.test() function (source code from pwr-package) to deal with errors that occurred when running more iterations. This error is apparently caused by uniroot() where the endpoints of an interval were not of opposite signs. I changed the uniroot()-function by adding the argument extendInt = "yes". This extends the interval until it has differing signs at the endpoints. Other than that, I did not alter the pwr.r.test()-function.
+
+"cstm.pwr.r.test" <- function (n = NULL, r = NULL, sig.level = 0.05, power = NULL,
+                               alternative = c("two.sided", "less","greater")){
+  
+  if (sum(sapply(list(n, r, power, sig.level), is.null)) !=
+      1)
+    stop("exactly one of n, r, power, and sig.level must be NULL")
+  if (!is.null(r) && is.character(r))
+    r <- cohen.ES(test="r",size=r)$effect.size
+  if (!is.null(sig.level) && !is.numeric(sig.level) || any(0 >
+                                                           sig.level | sig.level > 1))
+    stop(sQuote("sig.level"), " must be numeric in [0, 1]")
+  if (!is.null(power) && !is.numeric(power) || any(0 > power |
+                                                   power > 1))
+    stop(sQuote("power"), " must be numeric in [0, 1]")
+  if (!is.null(n) && any(n < 4))
+    stop("number of observations must be at least 4")
+  alternative <- match.arg(alternative)
+  tside <- switch(alternative, less = 1, two.sided = 2,greater=3)
+  if (tside == 2 && !is.null(r))
+    r <- abs(r)
+  if (tside == 3) {
+    p.body <- quote({
+      ttt <- qt(sig.level, df = n - 2, lower.tail = FALSE)
+      rc <- sqrt(ttt^2/(ttt^2 + n - 2))
+      zr <- atanh(r) + r/(2 * (n - 1))
+      zrc <- atanh(rc) # + rc/(2 * (n - 1))
+      pnorm((zr - zrc) * sqrt(n - 3))
+    })
+  }
+  if (tside == 1) {
+    p.body <- quote({
+      r<--r
+      ttt <- qt(sig.level, df = n - 2, lower.tail = FALSE)
+      rc <- sqrt(ttt^2/(ttt^2 + n - 2))
+      zr <- atanh(r) + r/(2 * (n - 1))
+      zrc <- atanh(rc) # + rc/(2 * (n - 1))
+      pnorm((zr - zrc) * sqrt(n - 3))
+    })
+  }
+  
+  if (tside == 2) {
+    p.body <- quote({
+      ttt <- qt(sig.level/2, df = n - 2, lower.tail = FALSE)
+      rc <- sqrt(ttt^2/(ttt^2 + n - 2))
+      zr <- atanh(r) + r/(2 * (n - 1))
+      zrc <- atanh(rc) # + rc/(2 * (n - 1))
+      pnorm((zr - zrc) * sqrt(n - 3)) + pnorm((-zr - zrc) *
+                                                sqrt(n - 3))
+    })
+  }
+  if (is.null(power))
+    power <- eval(p.body)
+  else if (is.null(n))
+    n <- uniroot(function(n) eval(p.body) - power, c(4 +
+                                                       1e-10, 1e+09), extendInt = "yes")$root # here I added extendInt = "yes"
+  else if (is.null(r)){
+    if(tside==2)
+      r <- uniroot(function(r) eval(p.body) - power,
+                   c(1e-10,1 - 1e-10))$root
+    else
+      r <- uniroot(function(r) eval(p.body) - power,
+                   c(-1+1e-10, 1 - 1e-10))$root
+  }
+  else if (is.null(sig.level))
+    sig.level <- uniroot(function(sig.level) eval(p.body) - power,
+                         c(1e-10, 1 - 1e-10))$root
+  else stop("internal error")
+  METHOD <- "approximate correlation power calculation (arctangh transformation)"
+  structure(list(n = n, r = r, sig.level = sig.level, power = power,
+                 alternative = alternative, method = METHOD), class = "power.htest")
+}
+
+
+
+
+# setting up experiment parameters grid ----
+experiment_parameters_grid <- expand_grid(
+  n_orig = c(30, 54, 80, 150), # different original sample sizes
+  rho = c(0.0, .10, .30, .50), # different true population correlations
+  iteration = 1:1000 # number of iterations
+) |> 
+  mutate(rho_biased = rho + .20) # consistent upward bias of .20 for original studies
+
+
+# run simulation ---- 
+simulation <- 
+  # using the experiment parameters
+  experiment_parameters_grid |> 
+  
+  # generate original data using the data generating function and the parameters relevant to data generation
+  mutate(generated_data_orig = pmap(list(n_orig, # use the n_orig
+                                         rho_biased), #...and the biased correlation as parameters
+                                    generate_data)) |>
+  
+  # apply the fit correlations function to the generated original data and store the result in the column r_orig 
+  mutate(r_orig = pmap(list(generated_data_orig),
+                       fit_correlation)) |>
+  
+  # calculating sample size for replication study using the sample size planning function
+  mutate(parameters_rep = pmap(list(r_orig), 
+                               sample_size_planning)) |> 
+  unnest(parameters_rep) |>  # unnest the results from the tibble to get a single column n_rep
+  
+  # generate replication data using the data generating function and the parameters relevant to data generation
+  mutate(generated_data_rep = pmap(list(n_rep, # now use the calculated sample size for the replication study as n
+                                        rho), # ...and the true population correlations as parameters
+                                   generate_data)) |> 
+  
+  # apply the fit correlations function to the generated replication data and store the result in the column r_rep
+  mutate(r_rep = pmap(list(generated_data_rep),
+                      fit_correlation)) |> 
+  
+  # apply the analyse differences function to the correlation estimates from the originals and replications
+  mutate(results_diff = pmap(list(r_orig,
+                                  r_rep,
+                                  n_orig,
+                                  n_rep),
+                             analyse_difference))
+
+
+# summarize simulation results ----
+
+simulation_summary <- simulation |>
+  
+  # unnest r_orig data frame to extract the correlation estimate for the original studies
+  unnest(r_orig) |> 
+  rename(r_orig = r_estimate) |> # rename the unnested column to r_orig
+  
+  # unnest r_rep data frame to extract the correlation estimate for the replication studies
+  unnest(r_rep) |> 
+  rename(r_rep = r_estimate) |> # rename the unnested column to r_rep
+  
+  unnest(results_diff) |> # unnest the results_diff tibble to extract the single columns
+  
+  
+  # summarize variables to get mean estimates for original and replication studies as well as median number of participants in replications
+  group_by(n_orig, 
+           rho,
+           rho_biased) |> # grouped by simulation factors
+  
+  summarize(proportion_diff = round_half_up(mean(p_value < .05), digits = 3), #calculate proportion of significant differences
+            mean_cohen_q = round_half_up(mean(cohen_q), digits = 3), # mean of Cohen's q, effect size measure for differences
+            mean_estimate_orig = round_half_up(mean(r_orig), digits = 3), # (biased) mean estimate original studies 
+            mean_estimate_rep = round_half_up(mean(r_rep), digits= 3), # mean estimate replication studies
+            median_n_rep = ceiling(median(n_rep))) |> # summarize n_rep to median number of participants in replications
+  
+  ungroup() |> 
+  
+  dplyr::select(rho,
+                rho_biased,
+                n_orig,
+                median_n_rep,
+                mean_estimate_orig,
+                mean_estimate_rep,
+                mean_cohen_q,
+                proportion_diff) # select and reorder variables
+
+```
+
+## Results Simulation 2 - Tables and Plots
+```{r results table simulation 2}
+
+# create a table of results ----
+
+# proportion of original and replication study pairs that differ significantly for rho = 0.0 and rho_biased = 0.20
+simulation_summary |> 
+  
+  filter(rho == 0.0) |> # filter for rho = 0.0
+  
+  dplyr::select(-rho, -rho_biased) |> # drop both rho variables
+  
+  # Properly naming variables to create a nice table 
+  rename(`N Orig.` = n_orig,
+         `Md. N Rep.`= median_n_rep, 
+         `M cor Orig.` = mean_estimate_orig,
+         `M cor Rep.` = mean_estimate_rep,
+         `M Cohen's q` = mean_cohen_q, 
+         `Prop. Difference` = proportion_diff) |> 
+  
+  kable(caption = "Results for \u03C1\ = 0.0 and biased \u03C1\ = 0.20, respectively" ) |> # create table and add title
+  footnote(general = "Note. Cohen's q = |.10|, |.30|, and |.50| are considered small, moderate, and large differences, respectively.", # add footnote to table
+           general_title = "") |> 
+  kable_classic(full_width = FALSE) # set theme for table
+
+
+# proportion of original and replication study pairs that differ significantly for rho = .10 and rho_biased = .30
+simulation_summary |> 
+  
+  filter(rho == .10) |> # filter for rho = .10
+  
+  dplyr::select(-rho, -rho_biased) |> # drop both rho variables
+  
+  # Properly naming variables to create a nice table 
+  rename(`N Orig.` = n_orig,
+         `Md. N Rep.`= median_n_rep, 
+         `M cor Orig.` = mean_estimate_orig,
+         `M cor Rep.` = mean_estimate_rep,
+         `M Cohen's q` = mean_cohen_q, 
+         `Prop. Difference` = proportion_diff) |> 
+  
+  kable(caption = "Results for \u03C1\ = .10 and biased \u03C1\ = .30, respectively" ) |> # create table and add title
+  footnote(general = "Note. Cohen's q = |.10|, |.30|, and |.50| are considered small, moderate, and large differences, respectively.", # add footnote to table
+           general_title = "") |> 
+  kable_classic(full_width = FALSE) # set theme for table
+
+
+# proportion of original and replication study pairs that differ significantly for rho = .30 and rho_biased = .50
+simulation_summary |> 
+  
+  filter(rho == .30) |> # filter for rho = .30
+  
+  dplyr::select(-rho, -rho_biased) |> # drop both rho variables
+  
+  # Properly naming variables to create a nice table 
+  rename(`N Orig.` = n_orig,
+         `Md. N Rep.`= median_n_rep, 
+         `M cor Orig.` = mean_estimate_orig,
+         `M cor Rep.` = mean_estimate_rep,
+         `M Cohen's q` = mean_cohen_q, 
+         `Prop. Difference` = proportion_diff) |> 
+  
+  kable(caption = "Results for \u03C1\ = .30 and biased \u03C1\ = .50, respectively" ) |> # create table and add title
+  footnote(general = "Note. Cohen's q = |.10|, |.30|, and |.50| are considered small, moderate, and large differences, respectively.", # add footnote to table
+           general_title = "") |> 
+  kable_classic(full_width = FALSE) # set theme for table
+
+
+# proportion of original and replication study pairs that differ significantly for rho = .50 and rho_biased = .70
+simulation_summary |> 
+  
+  filter(rho == .50) |> # filter for rho = .50
+  
+  dplyr::select(-rho, -rho_biased) |> # drop both rho variables
+  
+  # Properly naming variables to create a nice table 
+  rename(`N Orig.` = n_orig,
+         `Md. N Rep.`= median_n_rep, 
+         `M cor Orig.` = mean_estimate_orig,
+         `M cor Rep.` = mean_estimate_rep,
+         `M Cohen's q` = mean_cohen_q, 
+         `Prop. Difference` = proportion_diff) |> 
+  
+  kable(caption = "Results for \u03C1\ = .50 and biased \u03C1\ = .70, respectively" ) |> # create table and add title
+  footnote(general = "Note. Cohen's q = |.10|, |.30|, and |.50| are considered small, moderate, and large differences, respectively.", # add footnote to table
+           general_title = "") |> 
+  kable_classic(full_width = FALSE) # set theme for table
+
+```
+
+### Proportion of Study Pairs That Differ Significantly
+```{r multiverse diff_proportion}
+
+# plot results for differences between study pairs with multiverse plot ----
+
+# The multiverse_plot function from the simulateR package is needed for this step.
+
+# Multiverse plot for proportion of study pairs that differ significantly
+
+summary_ordered_diff <- simulation_summary |> 
+  # the outcome variable must be called 'outcome' for the multiverse plot function
+  mutate(outcome = proportion_diff) |> 
+  
+  # order the rows in the columns, from smallest to largest rho and then from smallest to largest n_orig
+  arrange(rho, n_orig) |> 
+  mutate(rank = row_number()) |> # create rank variable to pass on to multiverse function later
+  
+  # select only the columns which contain simulation factors (i.e., rho and n_orig) as well as 'outcome' and 'rank'
+  # rename variables to plot nicely
+  dplyr::select(`True cor.`= rho,
+                `Orig. sample size`= n_orig,
+                outcome,
+                rank)
+
+
+# create multiverse plot
+sim2_multiverse_diff <- multiverse_plot(summary_ordered_diff,
+                                        outcome_name = "Proportion p < .05",
+                                        relative_height_of_upper_plot = 0.7)
+
+sim2_multiverse_diff
+
+```
+
+## Summary of Results
+
+As expected, even though the original studies are biased by $\rho$ +.20 and the mean Cohen's $q$ for the different conditions is consistently larger than .20 (min. $q$ = .203; max. $q$ = .328), the proportion of study pairs that differ significantly according to Fisher's $z$-test is at best a mere 39.4%. What is more, the median sample size of the replication studies gets ridiculously small when the biased correlation estimates are used as a basis for sample size planning. This further decreases the chances of detecting a difference between two effect sizes. Of course, sample sizes in real replications are not always that small, which is why the proportion of significant differences should be interpreted with caution. 
+
+Nonetheless, the results show how low-powered original studies and the 80%-power sample planning method considerably impair the falsifiability of effects, especially also in a biased literature. Not only does this compromise cumulative science, it can have massive real world impacts as well. For example, if the difference between a true null correlation and a hacked correlation of r = .20 is hardly detected in a context of clinical high risk factors, resources and prevention could be allocated and targeted incorrectly. In the last simulation of this paper, some recommendations to tackle these problems are tested. 
+
+
+# Simulation 3 - Recommendations for Powering Future Studies
+
+The results of simulation 2 show that the commonly applied powering and sample size planning practices come with severe problems for a truly cumulative literature in psychology. To address these issues, [Morey and Lakens (2016)](https://github.com/richarddmorey/psychology_resolution/blob/master/paper/response.pdf) gave some recommendations for powering future studies. Firstly, they suggested that researchers power their original studies so that a similarly-sized replication has a high probability of detecting a *specified difference* from the results, if that difference actually exists. Secondly, the sample size in the replication study needs to be twice as large as the one in the original study to reliably detect a specified difference between the two. According to the Morey and Lakens, implementing these two practices in the planning of future studies should allow researchers to better detect potential differences. 
+
+The following simulation aims to test these recommendations in a hypothetical literature with specific parameters. Two effect sizes are regarded as non-identical if a true difference of Cohen's $q = |.15|$ exist between them. Original studies are powered to detect this difference. Still, original studies are biased upwards by +.20 to test whether the new practices applied actually improve the proportion of significant differences found. 
+
+## Data Generating Mechanisms
+
+Again, using the package `faux` normal bivariate correlational data (X and Y) for both original and replication studies are generated. This time, the original study sample size $n_{orig}$ will be based off of Cohen's suggestions ([Cohen, 1988](https://doi.org/10.4324/9780203771587)) for the required sample size to detect a difference of $q = .15$ with a power of .80 and an $\alpha = .05$. According to the approximation formula provided by Cohen, this number of participants should be: 
+
+$$
+n_{orig} = \frac{n_{.10} - 3}{100*q^2}+3 = \frac{1570}{2.25} + 3 \approx 701 
+$$ 
+Following the recommendation of Morey and Lakens, the sample in the replication study will be twice as large as the one in the original study, so $n_{rep} = 1402$. The values for the true population correlation $\rho$ stay the same with $\rho$ = 0.0, .10, .30, and .50 representing null, small, medium, and large effects respectively. A fully factorial design including all possible combinations of the simulation parameters is used.
+
+## Estimand
+
+As in the second simulation, the estimand of interest is the true hypothesis with regard to the difference between two effect sizes, i.e. Cohen's $q$. In this case, the null hypothesis denotes a difference of $q < |.15|$ and the alternative hypothesis, which is the true hypothesis since the effect sizes are consistently hacked, is defined as $q \geq |.15|$. 
+
+## Methods
+
+Morey & Lakens' recommendations for powering future studies are evaluated in a simulated literature. Original sample sizes are powered to detect a specified difference of Cohen's $q = |.15|$ between two studies. Further, the replication sample sizes are twice as large as the original samples. These methods should yield higher power for detecting differences than other common sample size planning practices do. 
+
+## Perfomance Measures
+
+Cohen's $q$ is calculated as the difference between the two Fisher's $z$-transformed correlation estimates. The CI for the difference between original and replication correlation estimates is determined (i.e., CI for Cohen's $q$). The proportion of original and replication pairs that differ significantly is then assessed: If the CI for Cohen's $q$ does not include |.15|, a true difference of correlations greater than |.15| exists. 
+
+## Simulation 3 - Code
+
+```{r simulation 3, echo = TRUE}
+
+rm(list = ls()) #clear global environment
+
+# dependencies ----
+
+# load all the necessary dependencies
+
+library(tidyverse)
+library(faux)
+library(pwr)
+library(diffcor)
+library(kableExtra)
+library(janitor)
+library(ggplot2)
+library(ggtext)
+library(simulateR)
+
+# set the seed ----
+# for making the results of the (pseudo) random number generator reproducible
+set.seed(73)
+
+
+# define data generation function ----
+generate_data <- function (n,
+                           rho) {
+  
+  # loading necessary package (safety measure if package has not been loaded correctly before)
+  require(faux)
+  
+  # generate data with rnorm_multi()
+  data <- rnorm_multi(n = n, # n gets passed on by argument
+                      mu = c(0, 0), # numbers are arbitrary, means of variables should be equal to get normal data 
+                      sd = c(1, 1), # numbers are also arbitrary: values of mu and sd represent standard normal distribution
+                      r = matrix(c(1, rho, # creates a correlation matrix with 'rho' as the true corr. passed on by argument 
+                                   rho, 1), 
+                                 ncol = 2),
+                      varnames = c("x", "y")) # names of variables to "x" and "y"
+  
+  return(data) # returns generated data
+  
+}
+
+# define data analysis functions ----
+
+# function for fitting correlations
+fit_correlation <- function(data) {
+  
+  fit_cor <- cor.test(data$x, # fit correlation between variable x (requires data to contain column x)
+                      data$y, # ...and variable y (requires data to contain column y)
+                      alternative = "two.sided", # specify alternative hypothesis to two sided, for r != 0
+                      method = "pearson") # use Pearson's r as estimated coefficient
+  
+  
+  results_cor <- tibble(r_estimate = fit_cor$estimate) # create a results tibble with the estimated correlation
+  
+  return(results_cor)
+}
+
+
+# Function to compare if the Fisher's z transformed difference between two correlations is greater than q = |0.20|
+analyse_difference <- function(r1, r2, n1, n2, alpha = 0.05) {
+  
+  # Fisher's z-transformation for correlations
+  z1 <- atanh(r1) # z-transform correlation estimate of the original study
+  z2 <- atanh(r2) # z-transform correlation estimate of the replication study
+  
+  # Standard errors for both samples
+  SE1 <- 1 / sqrt(n1 - 3) # SE for original study
+  SE2 <- 1 / sqrt(n2 - 3) # SE for replication study
+  
+  # Critical value for 95% confidence interval
+  z_alpha_2 <- qnorm(1 - alpha / 2) # two sided critical z-value (1.96)
+  
+  
+  # Difference and its standard error
+  diff_q <- z1 - z2 # calculate difference of correlations -> Cohen's q
+  SE_diff <- sqrt(SE1^2 + SE2^2) # calculate SE of the difference
+  
+  # Confidence interval for the difference
+  CI_diff <- c(diff_q - z_alpha_2 * SE_diff, diff_q + z_alpha_2 * SE_diff) # returns a list with [1] lower bound and [2] upper bound of the confidence interval
+  
+  # create a tibble of results
+  diff_results <- tibble(cohen_q = diff_q, # effect size measure for difference of correlations
+                         cohen_q_ci_lower = CI_diff[1], # lower limit of the 95%-CI for the difference Cohen's q
+                         cohen_q_ci_upper = CI_diff[2]) # upper limit of the 95%-CI for the difference Cohen's q
+  
+  return(diff_results)
+}
+
+
+
+
+# setting up experiment parameters grid ----
+experiment_parameters_grid <- expand_grid(
+  n_orig = 701, # original sample size needed to detect Cohen's q = |.15| according to Cohen's sample size tables
+  n_rep = n_orig*2, # replication sample size is double the original sample size, following Morey & Lakens' recommendations
+  rho = c(0.0, .10, .30, .50), # different true population correlations
+  iteration = 1:10000 # number of iterations
+) |> 
+  mutate(rho_biased = rho + .20) # consistent upward bias of .20 for original studies
+
+
+# run simulation ---- 
+simulation <- 
+  # using the experiment parameters
+  experiment_parameters_grid |> 
+  
+  # generate original data using the data generating function and the parameters relevant to data generation
+  mutate(generated_data_orig = pmap(list(n_orig, # use the n_orig
+                                         rho_biased), # ...and the biased correlation as parameters
+                                    generate_data)) |>
+  
+  # apply the fit correlations function to the generated original data and store the result in the column r_orig 
+  mutate(r_orig = pmap(list(generated_data_orig),
+                       fit_correlation)) |>
+  
+  # generate replication data using the data generating function and the parameters relevant to data generation
+  mutate(generated_data_rep = pmap(list(n_rep, # now use the n_rep as the sample size (n_orig*2)
+                                        rho), # ...and the true population correlation rho
+                                   generate_data)) |> 
+  
+  # apply the fit correlations function to the generated replication data and store the result in the column r_rep
+  mutate(r_rep = pmap(list(generated_data_rep),
+                      fit_correlation)) |> 
+  
+  # unnest correlation estimate results to pass on to analyse_difference function in the next step
+  
+  # unnest r_orig data frame to extract the correlation estimate for the original studies
+  unnest(r_orig) |> 
+  rename(r_orig = r_estimate) |> # rename the extracted column to r_orig
+  
+  # unnest r_rep data frame to extract the correlation estimate for the replication studies
+  unnest(r_rep) |> 
+  rename(r_rep = r_estimate) |> # rename the extracted column to r_rep
+  
+  # apply the analyse differences function to the correlation estimates from the originals and replications
+  mutate(results_diff = pmap(list(r_orig,
+                                  r_rep,
+                                  n_orig,
+                                  n_rep),
+                             analyse_difference))
+
+
+# summarize simulation results ----
+
+simulation_summary <- simulation |>
+  
+  
+  unnest(results_diff) |> # unnest the results_diff tibble to extract the single columns
+  
+  
+  # create boolean variable for the true difference of Cohen's q = |.15|, using the confidence intervals
+  # when the lower limit and the upper limit of the CI for Cohen's q is bigger than |.15|, then assign TRUE (true difference between studies >= |.15|)
+  mutate(diff_q15 = case_when(abs(cohen_q_ci_lower) > .15 & abs(cohen_q_ci_upper) > .15 ~ TRUE, 
+                              TRUE ~ FALSE)) |> # if this case matches, then Cohen's q < |.15|, null hypothesis not rejected
+  
+  
+  # summarize variables to get mean estimates for original and replication studies as well as proportion of study pairs that differ by Cohen's q |.15| or more.
+  group_by(n_orig,
+           n_rep,
+           rho,
+           rho_biased) |> # grouped by simulation factors
+  
+  summarize(proportion_diff_q15 = round_half_up(mean(diff_q15), digits = 3), # calculate proportion of true differences Cohen's q |.15|, rounded to three decimal digits
+            mean_cohen_q = round_half_up(mean(cohen_q), digits = 3), # mean of Cohen's q, effect size measure for differences, rounded to three decimal digits
+            mean_estimate_orig = round_half_up(mean(r_orig), digits = 3), # (biased) mean estimate original studies, rounded to three decimal digits
+            mean_estimate_rep = round_half_up(mean(r_rep), digits= 3)) |>  # mean estimate replication studies, rounded to three decimal digits
+  
+  ungroup() |> 
+  
+  dplyr::select(rho,
+                rho_biased,
+                n_orig,
+                n_rep,
+                mean_estimate_orig,
+                mean_estimate_rep,
+                mean_cohen_q,
+                proportion_diff_q15) # select and reorder variables
+
+
+
+```
+
+## Results Simulation 3
+```{r results table simulation 3}
+
+# create a table of results ----
+
+# proportion of original and replication study pairs that differ by Cohen's q >= |.15| by rho and rho biased
+simulation_summary |> 
+  
+  # Properly naming variables to create a nice table 
+  rename(`Rho` = rho,
+         `Rho biased` = rho_biased,
+         `N Orig.` = n_orig,
+         `N Rep.`= n_rep, 
+         `M cor Orig.` = mean_estimate_orig,
+         `M cor Rep.` = mean_estimate_rep,
+         `M Cohen's q` = mean_cohen_q, 
+         `Prop. Difference` = proportion_diff_q15) |> 
+  
+  kable(caption = "Proportion of Study Pairs that differ significantly by Cohen's q \u2265\ |.15|") |> # create table and add title
+  kable_classic(full_width = FALSE) # set theme for table
+
+```
+
+
+## Summary of Results
+
+A limitation that has to be mentioned at this point is that only one specified difference was simulated, where in a more extensive study multiple specific values for Cohen's $q$ in combination with different realistic and theoretically necessary sample sizes could be assessed. However, this endeavour would have gone beyond the scope of this assessment.
+
+Simulation 3 demonstrates that running studies with considerably larger sample sizes leads to an improvement in the detection of specified differences between results. For almost half of the study pairs with a true medium correlation and a biased large correlation, a difference of $q \geq |.15|$ was found. This proportion was even higher with 95.2% for the difference between $\rho = .50$ and a biased correlation of .70. Somewhat surprising at first glance is that the proportion of significant differences for the true small vs. biased medium correlations does not improve that much with 25.2% compared to the highest proportion found in simulation 2 for this combination, which is 24.8%. This seems to be even worse for the true null vs. the biased correlation of .20, where in simulation 2 the highest proportion was 39.4% compared to the 21.1% in simulation 3. Still, there is a substantial contrast between these findings: In simulation 2, the differences were tested against 0, whereas in simulation 3, a significant results denotes a difference of $\geq|.15|$. 
+
+Overall, the results of this specific simulated literature show that whilst defining a minimal difference of $q$-units and powering studies to detect this effect increases the proportion of study pairs that differ significantly, a one-size-fits-all approach is certainly not the solution. The proportion of significant differences $\geq |.15|$ increases with the true population correlation. This leads to the conclusion that the minimal differences needed to argue for a true difference between effect sizes also varies with the hypothesized population effect and the theoretical reasoning behind it. For example, a much smaller deviation can be important when differentiating between a null and a small effect in contrast to a medium vs. large effect. This specification of a minimal difference needed to conclude that two effect sizes are not equal improves the falsifiability of research findings. Rejecting the null hypothesis now clearly implies a certain deviation between studies, improving the resolution of research findings in the literature. Unfortunately, this higher resolution comes at a cost of much larger sample sizes, which is by far not always feasible for individual studies. However, as Morey and Lakens emphasise, when we power to detect differences, we should treat every study as part of a larger scientific picture instead of seeing them as an isolated attempt to find the truth. It is to be hoped that this change of perspective will lead psychology towards a more cumulative science with the goal of falsifiability rather than replicability of unfalsifiable results. 
+
+
+# Session info
+
+```{r}
+
+sessionInfo()
+
+```
